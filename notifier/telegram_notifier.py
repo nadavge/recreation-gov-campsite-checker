@@ -2,25 +2,25 @@
 from collections import defaultdict
 import json
 import random
+import traceback
 import sys
 import os
 from typing import Dict, List, Set, Tuple
 
 import telegram
 
-STATE_FILE = "state.json"
-CREDENTIALS_FILE = os.path.join(
-    os.path.dirname(os.path.realpath(__file__)), "telegram_credentials.json"
-)
+relpath = lambda p: os.path.join(os.path.dirname(os.path.realpath(__file__)), p)
+STATE_FILE = relpath("state.json")
+CREDENTIALS_FILE = relpath("telegram_credentials.json")
 
 
-def _send_message(message, tc):
-    bot = telegram.Bot(token=tc["bot_token"])
+def _send_message(message, token, chat_id, markdown=False):
+    bot = telegram.Bot(token=token)
     print(
         bot.sendMessage(
-            chat_id=tc["chat_id"],
+            chat_id=chat_id,
             text=message,
-            parse_mode="MarkdownV2",
+            parse_mode="MarkdownV2" if markdown else None,
             disable_web_page_preview=True,
         )
     )
@@ -36,12 +36,7 @@ def flattened_sites(state: dict) -> List[Tuple]:
         for site_id in state[park_id]["available_sites"]:
             for available_dates in state[park_id]["available_sites"][site_id]:
                 result.append(
-                    (
-                        park_id,
-                        site_id,
-                        available_dates["start"],
-                        available_dates["end"],
-                    )
+                    (park_id, site_id, available_dates["start"], available_dates["end"])
                 )
 
     return result
@@ -78,11 +73,11 @@ def generate_update_submessage(
     for park_id in sorted(unflattened_info):
         message += f"[{park_id_to_name[park_id]}](https://www.recreation.gov/camping/campgrounds/{park_id}):\n"
         for site_id in sorted(unflattened_info[park_id]):
-            message += f"  [Site {site_id}](https://www.recreation.gov/camping/campsites/{site_id}):\n"
+            message += f"``` ```\\* [Site {site_id}](https://www.recreation.gov/camping/campsites/{site_id}):\n"
             for start, end in unflattened_info[park_id][site_id]:
                 start = start.replace("-", "\\-")
                 end = end.replace("-", "\\-")
-                message += f"    \\* {start} \\-\\> {end}\n"  # TODO add link
+                message += f"```  ```\\* {start} \\-\\> {end}\n"  # TODO add link
 
     return message
 
@@ -124,18 +119,31 @@ def main(args, stdin):
     with open(STATE_FILE) as f:
         old_state = json.load(f)
 
+    data = ""
+
     try:
-        new_state = json.loads(stdin.read())
-    except:
-        _send_message("I'm broken\\! Please help :'(", tc)
+        data = stdin.read()
+        new_state = json.loads(data)
+    except Exception as e:
+        type, value, _ = sys.exc_info()
+        _send_message(
+            f"I'm broken! Please help :'(\n\n"
+            f"Exception of type: {str(type)}\n\nDetails: {value}\n\n"
+            f"{traceback.format_exc()}\n\n"
+            f"Input to notifier:\n\n{data}",
+            tc["bot_token"],
+            tc["error_chat_id"],
+        )
         sys.exit(1)
 
     update_message = generate_update_message(old_state, new_state)
 
     if update_message:
         try:
-            _send_message(update_message, tc)
-            # If send successful, save the new state!
+            _send_message(update_message, tc["bot_token"], tc["chat_id"], markdown=True)
+
+            # This should not be reachable in cases of failure to send, to
+            # ensure the difference is always from the last update _sent_.
             with open(STATE_FILE, "w") as f:
                 json.dump(new_state, f)
 
@@ -146,7 +154,6 @@ def main(args, stdin):
 
     else:
         print("No changes, not notifying 😞")
-        sys.exit(1)
 
 
 if __name__ == "__main__":

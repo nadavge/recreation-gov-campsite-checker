@@ -52,9 +52,7 @@ def get_park_information(
 
     # Get each first of the month for months in the range we care about.
     start_of_month = datetime(start_date.year, start_date.month, 1)
-    months = list(
-        rrule.rrule(rrule.MONTHLY, dtstart=start_of_month, until=end_date)
-    )
+    months = list(rrule.rrule(rrule.MONTHLY, dtstart=start_of_month, until=end_date))
 
     # Get data for each month.
     api_data = []
@@ -69,16 +67,11 @@ def get_park_information(
         for campsite_id, campsite_data in month_data["campsites"].items():
             available = []
             a = data.setdefault(campsite_id, [])
-            for date, availability_value in campsite_data[
-                "availabilities"
-            ].items():
+            for date, availability_value in campsite_data["availabilities"].items():
                 if availability_value != "Available":
                     continue
 
-                if (
-                    campsite_type
-                    and campsite_type != campsite_data["campsite_type"]
-                ):
+                if campsite_type and campsite_type != campsite_data["campsite_type"]:
                     continue
 
                 if (
@@ -94,9 +87,7 @@ def get_park_information(
     return data
 
 
-def get_num_available_sites(
-    park_information, start_date, end_date, nights=None
-):
+def get_num_available_sites(park_information, start_date, end_date, nights=None):
     maximum = len(park_information)
 
     num_available = 0
@@ -126,9 +117,7 @@ def get_num_available_sites(
         if not desired_available:
             continue
 
-        appropriate_consecutive_ranges = consecutive_nights(
-            desired_available, nights
-        )
+        appropriate_consecutive_ranges = consecutive_nights(desired_available, nights)
 
         if appropriate_consecutive_ranges:
             num_available += 1
@@ -152,9 +141,7 @@ def consecutive_nights(available, nights):
     date range for this site that is available.
     """
     ordinal_dates = [
-        datetime.strptime(
-            dstr, DateFormat.ISO_DATE_FORMAT_RESPONSE.value
-        ).toordinal()
+        datetime.strptime(dstr, DateFormat.ISO_DATE_FORMAT_RESPONSE.value).toordinal()
         for dstr in available
     ]
     c = count()
@@ -269,26 +256,43 @@ def generate_json_output(info_by_park_id):
     return json.dumps(output), has_availabilities
 
 
-def main(parks, json_output=False):
+def main(args, json_output=False):
     info_by_park_id = {}
-    for park_id in parks:
-        info_by_park_id[park_id] = check_park(
-            park_id,
-            args.start_date,
-            args.end_date,
-            args.campsite_type,
-            args.campsite_ids,
-            nights=args.nights,
-        )
+    if args.query_file is not None:
+        with open(args.query_file) as f:
+            query = json.load(f)
+
+        for q in query:
+            for park_query in q["parks"]:
+                park_id = park_query["id"]
+                info_by_park_id[park_id] = check_park(
+                    park_id,
+                    datetime.strptime(
+                        q["start_date"], DateFormat.INPUT_DATE_FORMAT.value
+                    ),
+                    datetime.strptime(
+                        q["end_date"], DateFormat.INPUT_DATE_FORMAT.value
+                    ),
+                    args.campsite_type,
+                    args.campsite_ids,
+                    nights=args.nights,  # TODO NADAV support nights and campsites
+                )
+    else:
+        for park_id in args.parks:
+            info_by_park_id[park_id] = check_park(
+                park_id,
+                args.start_date,
+                args.end_date,
+                args.campsite_type,
+                args.campsite_ids,
+                nights=args.nights,
+            )
 
     if json_output:
         output, has_availabilities = generate_json_output(info_by_park_id)
     else:
         output, has_availabilities = generate_human_output(
-            info_by_park_id,
-            args.start_date,
-            args.end_date,
-            args.show_campsite_info,
+            info_by_park_id, args.start_date, args.end_date, args.show_campsite_info
         )
     print(output)
     return has_availabilities
@@ -301,4 +305,4 @@ if __name__ == "__main__":
     if args.debug:
         LOG.setLevel(logging.DEBUG)
 
-    main(args.parks, json_output=args.json_output)
+    main(args, json_output=args.json_output)

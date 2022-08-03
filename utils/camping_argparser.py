@@ -9,18 +9,18 @@ from enums.date_format import DateFormat
 class CampingArgumentParser(argparse.ArgumentParser):
     def __init__(self):
         super().__init__()
-        self.add_argument(
-            "--debug", "-d", action="store_true", help="Debug log level"
-        )
+        self.add_argument("--debug", "-d", action="store_true", help="Debug log level")
         self.add_argument(
             "--start-date",
-            required=True,
+            # TODO NADAV fix this back
+            # required=True,
             help="Start date [YYYY-MM-DD]",
             type=self.TypeConverter.date,
         )
         self.add_argument(
             "--end-date",
-            required=True,
+            # TODO NADAV fix this back
+            # required=True,
             help="End date [YYYY-MM-DD]. You expect to leave this day, not stay the night.",
             type=self.TypeConverter.date,
         )
@@ -73,11 +73,19 @@ class CampingArgumentParser(argparse.ArgumentParser):
             action="store_true",
             help="Read list of park ID(s) from stdin instead",
         )
+        parks_group.add_argument(
+            "--query",
+            dest="query_file",
+            metavar="query_file",
+            type=str,
+            help="Read complex query of parks from json file",
+        )
 
     def parse_args(self, args=None, namespace=None):
         args = super().parse_args(args, namespace)
-        args.parks = args.parks or [p.strip() for p in sys.stdin]
-        self._validate_args(args)
+        # TODO NADAV fix this back
+        # args.parks = args.parks or [p.strip() for p in sys.stdin]
+        # self._validate_args(args)
         return args
 
     @classmethod
@@ -91,9 +99,7 @@ class CampingArgumentParser(argparse.ArgumentParser):
         @classmethod
         def date(cls, date_str):
             try:
-                return datetime.strptime(
-                    date_str, DateFormat.INPUT_DATE_FORMAT.value
-                )
+                return datetime.strptime(date_str, DateFormat.INPUT_DATE_FORMAT.value)
             except ValueError as e:
                 msg = "Not a valid date: '{0}'.".format(date_str)
                 logging.critical(e)
